@@ -4,20 +4,20 @@ from pinecone import Pinecone
 import pandas as pd
 import requests
 
-# Step 3: Load API Keys & Settings from Streamlit Secrets
+# Step 1: Load API Keys & Settings from Streamlit Secrets
 PINECONE_API_KEY = st.secrets["pinecone"]["PINECONE_API_KEY"]
 PINECONE_HOST = st.secrets["pinecone"]["PINECONE_HOST"]
 PINECONE_INDEX = st.secrets["pinecone"]["PINECONE_INDEX"]
 GROQ_API_KEY = st.secrets["groq"]["GROQ_API_KEY"]
 
-# Step 4: Initialize Pinecone Client with Hosted Index
-pc = Pinecone(api_key=PINECONE_API_KEY, host=PINECONE_HOST)
+# Step 2: Initialize Pinecone Client with Hosted Index
+pc = Pinecone(api_key=PINECONE_API_KEY)
 index = pc.Index(PINECONE_INDEX)
 
-# Step 5: Load Embedding Model
+# Step 3: Load Embedding Model
 model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
 
-# Step 6: Groq API Setup
+# Step 4: Groq API Setup
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 HEADERS = {
     "Authorization": f"Bearer {GROQ_API_KEY}",
@@ -33,7 +33,7 @@ def get_groq_response(prompt):
     response = requests.post(GROQ_URL, headers=HEADERS, json=data)
     return response.json()
 
-# Step 7: Function to Upload Data to Pinecone
+# Step 5: Function to Upload Data to Pinecone
 def upload_to_pinecone(df):
     vectors = []
     for idx, row in df.iterrows():
@@ -51,10 +51,10 @@ def upload_to_pinecone(df):
         })
     index.upsert(vectors=vectors, namespace="ns1")  # Use namespace "ns1"
 
-# Step 8: Streamlit App UI
+# Step 6: Streamlit App UI
 st.title("Question-Answer AI (Powered by Pinecone & Groq)")
 
-# Step 9: Upload Excel File
+# Step 7: Upload Excel File
 uploaded_file = st.file_uploader("Upload an Excel file (must have 'Question' and 'Answer' columns)", type=["xlsx"])
 
 if uploaded_file is not None:
@@ -69,7 +69,7 @@ if uploaded_file is not None:
             upload_to_pinecone(df)
         st.success("Data uploaded to Pinecone successfully!")
 
-# Step 10: Query System
+# Step 8: Query System
 query = st.text_input("Enter your question:")
 
 if query:
