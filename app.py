@@ -1,102 +1,101 @@
 import streamlit as st
 from sentence_transformers import SentenceTransformer
-from pinecone import Pinecone, ServerlessSpec
+from pinecone import Pinecone
 import pandas as pd
 import requests
 
-# Load API keys from Streamlit secrets
-PINECONE_API_KEY = st.secrets["PINECONE_API_KEY"]
-GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
-INDEX_NAME = st.secrets["PINECONE_INDEX_NAME"]
-PINECONE_ENV = st.secrets["PINECONE_ENV"]
+# Step 3: Load API Keys & Settings from Streamlit Secrets
+PINECONE_API_KEY = st.secrets["pinecone"]["PINECONE_API_KEY"]
+PINECONE_HOST = st.secrets["pinecone"]["PINECONE_HOST"]
+PINECONE_INDEX = st.secrets["pinecone"]["PINECONE_INDEX"]
+GROQ_API_KEY = st.secrets["groq"]["GROQ_API_KEY"]
 
-# Initialize Pinecone
-pc = Pinecone(api_key=PINECONE_API_KEY)
+# Step 4: Initialize Pinecone Client with Hosted Index
+pc = Pinecone(api_key=PINECONE_API_KEY, host=PINECONE_HOST)
+index = pc.Index(PINECONE_INDEX)
 
-# Check if the index exists, and create if not
-if INDEX_NAME not in pc.list_indexes().names():
-    pc.create_index(
-        name=INDEX_NAME,
-        dimension=768,
-        metric="cosine",
-        spec=ServerlessSpec(cloud="aws", region=PINECONE_ENV)
-    )
+# Step 5: Load Embedding Model
+model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
 
-# Connect to the index
-index = pc.Index(INDEX_NAME)
-
-# Load Sentence Transformer Model
-model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-
-# Groq API setup
-url = "https://api.groq.com/openai/v1/chat/completions"
-headers = {
+# Step 6: Groq API Setup
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+HEADERS = {
     "Authorization": f"Bearer {GROQ_API_KEY}",
     "Content-Type": "application/json"
 }
 
-# Function to call Groq API
 def get_groq_response(prompt):
     data = {
         "model": "deepseek-r1-distill-qwen-32b",
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": 150
     }
-    response = requests.post(url, headers=headers, json=data)
+    response = requests.post(GROQ_URL, headers=HEADERS, json=data)
     return response.json()
 
-# Function to upload data to Pinecone
+# Step 7: Function to Upload Data to Pinecone
 def upload_to_pinecone(df):
     vectors = []
     for idx, row in df.iterrows():
         question_id = str(idx)
         question = row["Question"]
         answer = row["Answer"]
-        embedding = model.encode(question).tolist()
+        embedding = model.encode(question)  # Embed the question
         vectors.append({
             "id": question_id,
-            "values": embedding,
-            "metadata": {"question": question, "answer": answer}
+            "values": embedding.tolist(),  # Convert numpy array to list
+            "metadata": {
+                "question": question,
+                "answer": answer
+            }
         })
-    index.upsert(vectors=vectors, namespace="ns1")
+    index.upsert(vectors=vectors, namespace="ns1")  # Use namespace "ns1"
 
-# Streamlit App UI
-st.title("📚 AI-Powered Question-Answer System")
+# Step 8: Streamlit App UI
+st.title("Question-Answer AI (Powered by Pinecone & Groq)")
 
-# File uploader for Excel
-uploaded_file = st.file_uploader("📂 Upload an Excel file (Columns: 'Question', 'Answer')", type=["xlsx"])
+# Step 9: Upload Excel File
+uploaded_file = st.file_uploader("Upload an Excel file (must have 'Question' and 'Answer' columns)", type=["xlsx"])
 
-if uploaded_file:
-    df = pd.read_excel(uploaded_file)
-    st.write("### ✅ Uploaded Data Preview:")
+if uploaded_file is not None:
+    # Read the uploaded Excel file
+    df = pd.read_excel(uploaded_file, engine="openpyxl")  # Ensure correct engine
+    st.write("### Uploaded Data Preview:")
     st.write(df.head())
 
-    if st.button("🚀 Upload Data to Pinecone"):
+    # Upload data to Pinecone
+    if st.button("Upload Data to Pinecone"):
         with st.spinner("Uploading data to Pinecone..."):
             upload_to_pinecone(df)
-        st.success("✅ Data successfully uploaded to Pinecone!")
+        st.success("Data uploaded to Pinecone successfully!")
 
-# Query Section
-query = st.text_input("🔍 Ask a question:")
+# Step 10: Query System
+query = st.text_input("Enter your question:")
 
 if query:
-    query_embedding = model.encode(query).tolist()
-    results = index.query(namespace="ns1", vector=query_embedding, top_k=5, include_metadata=True)
+    # Step 1: Search Pinecone
+    query_embedding = model.encode(query).tolist()  # Convert numpy array to list
+    results = index.query(
+        namespace="ns1",
+        vector=query_embedding,
+        top_k=5,
+        include_metadata=True
+    )
 
-    # Construct context for Groq API
-    context = "\n".join([
-        f"Question: {match['metadata']['question']}\nAnswer: {match['metadata']['answer']}\n"
-        for match in results["matches"]
-    ])
+    # Step 2: Use Groq API for response
+    context = ""
+    for match in results["matches"]:
+        context += f"Question: {match['metadata']['question']}\nAnswer: {match['metadata']['answer']}\n\n"
 
     prompt = f"Context:\n{context}\n\nQuestion: {query}\nAnswer:"
     response = get_groq_response(prompt)
 
-    st.write("### 🔍 Search Results from Pinecone:")
+    # Display results
+    st.write("### Search Results from Pinecone:")
     for match in results["matches"]:
-        st.write(f"**Q:** {match['metadata']['question']}")
-        st.write(f"**A:** {match['metadata']['answer']}")
+        st.write(f"**Question:** {match['metadata']['question']}")
+        st.write(f"**Answer:** {match['metadata']['answer']}")
         st.write("---")
 
-    st.write("### 🤖 AI Response:")
-    st.write(response["choices"][0]["message"]["content"])
+    st.write("### LLM Response:")
+    st.write(response['choices'][0]['message']['content'])
