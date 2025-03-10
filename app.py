@@ -17,7 +17,7 @@ if PINECONE_INDEX not in pc.list_indexes().names():
     # Create the index with the correct dimensionality
     pc.create_index(
         name=PINECONE_INDEX,
-        dimension=768,  # Must match the embedding size
+        dimension=384,  # Match the embedding size
         metric="cosine",  # Similarity metric
         spec=ServerlessSpec(
             cloud="aws",
@@ -64,10 +64,6 @@ def upload_to_pinecone(df):
             }
         })
     
-    # Debug: Print the first vector
-    st.write("First vector being uploaded:")
-    st.write(vectors[0])
-    
     # Upload vectors to Pinecone
     try:
         index.upsert(vectors=vectors, namespace="ns1")
@@ -113,12 +109,6 @@ if query:
     prompt = f"Context:\n{context}\n\nQuestion: {query}\nAnswer:"
     response = get_groq_response(prompt)
 
-    # Display results
-    st.write("### Search Results from Pinecone:")
-    for match in results["matches"]:
-        st.write(f"**Question:** {match['metadata']['question']}")
-        st.write(f"**Answer:** {match['metadata']['answer']}")
-        st.write("---")
-
-    st.write("### LLM Response:")
+    # Step 3: Display only the LLM response
+    st.write("### Refined LLM Response:")
     st.write(response['choices'][0]['message']['content'])
