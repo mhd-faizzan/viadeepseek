@@ -1,17 +1,31 @@
 import streamlit as st
 from sentence_transformers import SentenceTransformer
-from pinecone import Pinecone
+from pinecone import Pinecone, ServerlessSpec
 import pandas as pd
 import requests
 
 # Step 1: Load API Keys & Settings from Streamlit Secrets
 PINECONE_API_KEY = st.secrets["pinecone"]["PINECONE_API_KEY"]
-PINECONE_HOST = st.secrets["pinecone"]["PINECONE_HOST"]
 PINECONE_INDEX = st.secrets["pinecone"]["PINECONE_INDEX"]
 GROQ_API_KEY = st.secrets["groq"]["GROQ_API_KEY"]
 
 # Step 2: Initialize Pinecone Client with Hosted Index
 pc = Pinecone(api_key=PINECONE_API_KEY)
+
+# Check if the index exists
+if PINECONE_INDEX not in pc.list_indexes().names():
+    # Create the index with the correct dimensionality
+    pc.create_index(
+        name=PINECONE_INDEX,
+        dimension=768,  # Must match the embedding size
+        metric="cosine",  # Similarity metric
+        spec=ServerlessSpec(
+            cloud="aws",
+            region="us-east-1"
+        )
+    )
+
+# Connect to the index
 index = pc.Index(PINECONE_INDEX)
 
 # Step 3: Load Embedding Model
@@ -40,16 +54,26 @@ def upload_to_pinecone(df):
         question_id = str(idx)
         question = row["Question"]
         answer = row["Answer"]
-        embedding = model.encode(question)  # Embed the question
+        embedding = model.encode(question).tolist()  # Convert numpy array to list
         vectors.append({
             "id": question_id,
-            "values": embedding.tolist(),  # Convert numpy array to list
+            "values": embedding,  # Embedding as a list
             "metadata": {
                 "question": question,
                 "answer": answer
             }
         })
-    index.upsert(vectors=vectors, namespace="ns1")  # Use namespace "ns1"
+    
+    # Debug: Print the first vector
+    st.write("First vector being uploaded:")
+    st.write(vectors[0])
+    
+    # Upload vectors to Pinecone
+    try:
+        index.upsert(vectors=vectors, namespace="ns1")
+        st.success("Data uploaded to Pinecone successfully!")
+    except Exception as e:
+        st.error(f"Error uploading data to Pinecone: {e}")
 
 # Step 6: Streamlit App UI
 st.title("Question-Answer AI (Powered by Pinecone & Groq)")
@@ -67,7 +91,6 @@ if uploaded_file is not None:
     if st.button("Upload Data to Pinecone"):
         with st.spinner("Uploading data to Pinecone..."):
             upload_to_pinecone(df)
-        st.success("Data uploaded to Pinecone successfully!")
 
 # Step 8: Query System
 query = st.text_input("Enter your question:")
