@@ -44,7 +44,7 @@ HEADERS = {
 # Function to Get Response from Groq API
 def get_groq_response(prompt):
     data = {
-        "model": "llama-3.3-70b-versatile",  # Updated model
+        "model": "llama3-8b-8192",  # Updated model
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": 4096,  # Adjust if needed
         "temperature": 0.7,  # Controls creativity
