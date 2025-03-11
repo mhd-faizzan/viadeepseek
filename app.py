@@ -3,7 +3,7 @@ from sentence_transformers import SentenceTransformer
 from pinecone import Pinecone, ServerlessSpec
 import pandas as pd
 import requests
-import time  # For batch processing delay
+import time
 
 # Load API Keys & Settings from Streamlit Secrets
 try:
@@ -64,7 +64,7 @@ def get_groq_response(prompt):
 
     return llm_response
 
-# ✅ **Function to Upload Data to Pinecone in Batches**
+# Function to Upload Data to Pinecone in Batches
 def upload_to_pinecone(df, batch_size=100):
     if df.empty:
         st.error("Uploaded file is empty! Please upload a valid Excel file.")
@@ -74,6 +74,7 @@ def upload_to_pinecone(df, batch_size=100):
     total_rows = df.shape[0]  # Count total rows
     st.write(f"**Total Rows in File: {total_rows}**")
 
+    progress_bar = st.progress(0)  # Progress bar for upload
     for idx, row in df.iterrows():
         question_id = str(idx)
         question = str(row["Question"]).strip()
@@ -86,7 +87,7 @@ def upload_to_pinecone(df, batch_size=100):
             "metadata": {"question": question, "answer": answer}
         })
 
-        # ✅ **Upload in batches**
+        # Upload in batches
         if len(vectors) >= batch_size:
             try:
                 index.upsert(vectors=vectors, namespace="ns1")
@@ -95,6 +96,9 @@ def upload_to_pinecone(df, batch_size=100):
                 time.sleep(1)  # Prevent rate limits
             except Exception as e:
                 st.error(f"Error uploading batch to Pinecone: {e}")
+        
+        # Update progress bar
+        progress_bar.progress((idx + 1) / total_rows)
     
     # Upload remaining vectors if any
     if vectors:
@@ -148,7 +152,11 @@ if query:
                 st.write("### Answer:")
                 st.write(response)
         else:
-            st.warning("No matching results found in Pinecone.")
+            # Fallback to LLM's general knowledge
+            st.warning("No matching results found in Pinecone. Falling back to LLM's general knowledge...")
+            response = get_groq_response(query)
+            st.write("### Answer:")
+            st.write(response)
 
     except Exception as e:
         st.error(f"Error querying Pinecone: {e}")
