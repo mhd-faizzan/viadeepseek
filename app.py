@@ -44,18 +44,25 @@ HEADERS = {
 # Function to Get Response from Groq API
 def get_groq_response(prompt):
     data = {
-        "model": "llama3-70b-8192",
+        "model": "llama-3.3-70b-versatile",  # Updated model
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 300
+        "max_tokens": 2048,  # Increased for better responses
+        "temperature": 0.7,  # Controls randomness
+        "top_p": 0.9,
+        "stop": ["According to", "Based on", "As per the information"]  # Prevents AI-like disclaimers
     }
     response = requests.post(GROQ_URL, headers=HEADERS, json=data)
-    if response.status_code == 200:
-        content = response.json()
-        return content["choices"][0]["message"]["content"].strip()
-    else:
-        st.error(f"Groq API Error: {response.text}")
-        return None
+    result = response.json()
+    
+    llm_response = result['choices'][0]['message']['content']
 
+    # Remove unwanted AI disclaimers
+    remove_phrases = ["According to the information provided,", "Based on the given data,", "As per the details you provided,"]
+    for phrase in remove_phrases:
+        llm_response = llm_response.replace(phrase, "").strip()
+
+    return llm_response
+    
 # ✅ **Function to Upload Data to Pinecone in Batches**
 def upload_to_pinecone(df, batch_size=100):
     if df.empty:
