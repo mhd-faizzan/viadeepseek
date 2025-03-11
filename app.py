@@ -3,7 +3,7 @@ from sentence_transformers import SentenceTransformer
 from pinecone import Pinecone, ServerlessSpec
 import pandas as pd
 import requests
-import time  # Added for delay in batch uploads
+import time  # For batch processing delay
 
 # Load API Keys & Settings from Streamlit Secrets
 try:
@@ -44,18 +44,19 @@ HEADERS = {
 # Function to Get Response from Groq API
 def get_groq_response(prompt):
     data = {
-        "model": "deepseek-r1-distill-qwen-32b",
+        "model": "llama3-70b-8192",
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 150
+        "max_tokens": 300
     }
     response = requests.post(GROQ_URL, headers=HEADERS, json=data)
     if response.status_code == 200:
-        return response.json()
+        content = response.json()
+        return content["choices"][0]["message"]["content"].strip()
     else:
         st.error(f"Groq API Error: {response.text}")
         return None
 
-# ✅ **Final Fixed Function to Upload Data to Pinecone in Batches**
+# ✅ **Function to Upload Data to Pinecone in Batches**
 def upload_to_pinecone(df, batch_size=100):
     if df.empty:
         st.error("Uploaded file is empty! Please upload a valid Excel file.")
@@ -77,13 +78,13 @@ def upload_to_pinecone(df, batch_size=100):
             "metadata": {"question": question, "answer": answer}
         })
 
-        # ✅ **Upload in batches (e.g., 100 vectors per request)**
+        # ✅ **Upload in batches**
         if len(vectors) >= batch_size:
             try:
                 index.upsert(vectors=vectors, namespace="ns1")
                 st.write(f"Uploaded {len(vectors)} rows so far...")
                 vectors = []  # Clear batch
-                time.sleep(1)  # Small delay to prevent rate limits
+                time.sleep(1)  # Prevent rate limits
             except Exception as e:
                 st.error(f"Error uploading batch to Pinecone: {e}")
     
@@ -100,7 +101,7 @@ uploaded_file = st.file_uploader("Upload an Excel file (must have 'Question' and
 
 if uploaded_file is not None:
     try:
-        df = pd.read_excel(uploaded_file, engine="openpyxl")  # Force full data load
+        df = pd.read_excel(uploaded_file, engine="openpyxl")
         st.write("### Uploaded Data Preview:")
         st.dataframe(df.head(10))  # Show first 10 rows
         st.write(f"Total Rows Loaded: **{df.shape[0]}**")  # Display actual row count
@@ -136,8 +137,8 @@ if query:
             response = get_groq_response(prompt)
 
             if response:
-                st.write("### Refined LLM Response:")
-                st.write(response['choices'][0]['message']['content'])
+                st.write("### Answer:")
+                st.write(response)
         else:
             st.warning("No matching results found in Pinecone.")
 
